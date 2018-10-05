@@ -1,0 +1,33 @@
+version: "3"
+
+services:
+  haproxy:
+    image: haproxy:1.8.14
+    volumes:
+      - ./haproxy:/usr/local/etc/haproxy:ro
+    restart: always
+    ports:
+      - 443:443
+      - 80:80
+    networks:
+    - haproxy
+  letsencrypt:
+    command: serve  --level debug --le-staging --le-mail davidviejopomata@gmail.com --haproxy-dir /usr/local/etc/haproxy --storage-dir /storage
+    ports:
+      - 6300:6000
+    expose:
+      - 6000
+    networks:
+      - haproxy
+    depends_on:
+      - haproxy
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    volumes:
+    - ./haproxy:/usr/local/etc/haproxy
+    - ./storage:/storage
+    - /var/run/docker.sock:/var/run/docker.sock
+
+networks:
+  haproxy:

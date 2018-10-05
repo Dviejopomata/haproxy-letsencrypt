@@ -3,9 +3,8 @@ stages:
 
 variables:
   VERSION: "1.0"
-  IMAGE: "${CI_REGISTRY_IMAGE}"
-  IMAGE_CLI: "${IMAGE}:${VERSION}"
-  IMAGE_CLI_LATEST: "${IMAGE}:latest"
+  IMAGE_CLI: "${CI_REGISTRY_IMAGE}:${VERSION}"
+  IMAGE_CLI_LATEST: "${CI_REGISTRY_IMAGE}:latest"
 
 push-image:
   tags:
@@ -13,7 +12,7 @@ push-image:
   stage: build
   script:
   - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN ${CI_REGISTRY}
-  - docker build -f Dockerfile -t  ${IMAGE_CLI} .
+  - docker build -f Dockerfile -t ${IMAGE_CLI} .
   - docker push ${IMAGE_CLI}
   - docker tag ${IMAGE_CLI} ${IMAGE_CLI_LATEST}
   - docker push ${IMAGE_CLI_LATEST}

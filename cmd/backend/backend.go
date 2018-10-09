@@ -73,8 +73,8 @@ func newBackendDeleteCmd() *cobra.Command {
 	backendUrl := ""
 	o := types.BackendDeleteOptions{}
 	var backendDeleteCmd = &cobra.Command{
-		Use:     "delete",
-		Short:   "Delete a backend",
+		Use:   "delete",
+		Short: "Delete a backend",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.NewHttpClient(backendUrl)
 			err := c.DeleteBackend(o)
@@ -101,8 +101,8 @@ func newBackendAddCmd() *cobra.Command {
 	backendUrl := ""
 	o := types.BackendAddOptions{}
 	var backendAddCmd = &cobra.Command{
-		Use:     "add",
-		Short:   "Adds a new backend",
+		Use:   "add",
+		Short: "Adds a new backend",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.NewHttpClient(backendUrl)
 			err := c.AddBackend(o)
@@ -123,7 +123,7 @@ func newBackendAddCmd() *cobra.Command {
 	flags.StringVar(&o.Path, "path", "", "")
 	flags.StringVar(&o.Mode, "mode", "http", "")
 	flags.StringVar(&o.If, "if", "", "")
-
+	flags.StringArrayVar(&o.BasicAuth, "basic-auth", []string{}, "Basic auth users (user:password), generate password: printf \"123456\" | mkpasswd --stdin --method=md5 ")
 	flags.StringVar(&backendUrl, "backend-url", "b", "Server url")
 	backendAddCmd.MarkFlagRequired("backend-url")
 

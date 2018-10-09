@@ -17,7 +17,7 @@ make install
 ## Add a frontend
 
 ```bash
-haproxy-letsencrypt frontend add --backend-url=http://localhost:6300  --address=*:80 --name=http
+haproxy-letsencrypt frontend add --backend-url=http://localhost:6300  --port=80 --name=http
 ```
 ### Add backend
 
@@ -25,6 +25,13 @@ haproxy-letsencrypt frontend add --backend-url=http://localhost:6300  --address=
  haproxy-letsencrypt backend add --backend-url=http://localhost:6300 --frontend=http --host=example.com -a=192.168.1.47:9000 
 ```
 
+### Backend with basic auth
+
+```bash
+printf "123456" | mkpasswd --stdin --method=md5
+haproxy-letsencrypt backend add --backend-url=http://localhost:6300 --frontend=http --host=example.com -a=192.168.1.47:8080 --basic-auth="foo:\$1\$IBZn5tWj\$dJIVwHaK465qDTISvMFmK1"
+curl --user foo:123456 -H 'Host:example.com' localhost -v
+```
 
 ## Now with ssl
 
@@ -35,3 +42,5 @@ haproxy-letsencrypt frontend add --backend-url=http://localhost:6300  --port=443
 ```bash
 haproxy-letsencrypt backend add --backend-url=http://localhost:6300 --frontend=https --host=example.com -a=192.168.1.47:9000
 ```
+
+

@@ -18,14 +18,15 @@ type FrontendDeleteOptions struct {
 }
 
 type BackendAddOptions struct {
-	If       string   `json:"if"`
-	Frontend []string `json:"frontend"`
-	Host     string   `json:"host"`
-	Address  []string `json:"address"`
-	Options  []string `json:"options"`
-	Path     string   `json:"path"`
-	Mode     string   `json:"mode"`
-	Default  bool     `json:"default"`
+	If        string   `json:"if"`
+	Frontend  []string `json:"frontend"`
+	Host      string   `json:"host"`
+	Address   []string `json:"address"`
+	Options   []string `json:"options"`
+	Path      string   `json:"path"`
+	Mode      string   `json:"mode"`
+	Default   bool     `json:"default"`
+	BasicAuth []string `json:"basic_auth"`
 }
 type BackendListOptionsResponse struct {
 	Frontend Frontend `json:"frontend"`
@@ -50,12 +51,13 @@ type BackendServer struct {
 }
 
 type Backend struct {
-	If      string
-	Mode    string
-	Host    string
-	Path    string
-	Servers []BackendServer
-	Default bool
+	If        string
+	Mode      string
+	Host      string
+	Path      string
+	Servers   []BackendServer
+	Default   bool
+	BasicAuth []string
 }
 
 type BackendDeleteOptions struct {

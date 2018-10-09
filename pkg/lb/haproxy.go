@@ -10,6 +10,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
+	"strings"
 	"text/template"
 )
 
@@ -73,24 +74,26 @@ func (h *HaproxyLb) AddBackend(options types.BackendAddOptions) error {
 				for i, be := range frontend.Backends {
 					if be.Host == options.Host && be.Mode == options.Mode && be.Path == options.Path {
 						frontend.Backends[i] = hatypes.Backend{
-							If:      options.If,
-							Host:    options.Host,
-							Mode:    options.Mode,
-							Servers: servers,
-							Default: options.Default,
-							Path:    options.Path,
+							If:        options.If,
+							Host:      options.Host,
+							Mode:      options.Mode,
+							Servers:   servers,
+							Default:   options.Default,
+							Path:      options.Path,
+							BasicAuth: options.BasicAuth,
 						}
 						continue OUTER
 					}
 				}
 
 				backend := hatypes.Backend{
-					If:      options.If,
-					Host:    options.Host,
-					Mode:    options.Mode,
-					Servers: servers,
-					Default: options.Default,
-					Path:    options.Path,
+					If:        options.If,
+					Host:      options.Host,
+					Mode:      options.Mode,
+					Servers:   servers,
+					Default:   options.Default,
+					Path:      options.Path,
+					BasicAuth: options.BasicAuth,
 				}
 
 				frontend.Backends = append(frontend.Backends, backend)
@@ -179,8 +182,19 @@ type ComputedFrontend struct {
 	Lines    []string
 	Backends []ComputedBackend
 }
+type AclUser struct {
+	Group    string
+	Name     string
+	Password string
+}
+type ComputedAcl struct {
+	Name   string
+	Groups []string
+	Users  []AclUser
+}
 type ComputedHaproxyConfig struct {
 	Frontends []ComputedFrontend
+	Acls      []ComputedAcl
 }
 type BufferNewLine struct {
 	bytes.Buffer
@@ -191,7 +205,10 @@ func (b *BufferNewLine) WriteNewLine(str string) (n int, err error) {
 }
 
 func computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
-	finalConfig := ComputedHaproxyConfig{}
+	finalConfig := ComputedHaproxyConfig{
+		Frontends: []ComputedFrontend{},
+		Acls:      []ComputedAcl{},
+	}
 	for _, frontend := range config.Frontends {
 		var buffer BufferNewLine
 		if len(frontend.Backends) == 0 {
@@ -227,7 +244,29 @@ func computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
 					backendIf.WriteString(fmt.Sprintf("  path_beg %s", backend.Path))
 				}
 			}
+
 			if backendIf.Len() > 0 {
+				if len(backend.BasicAuth) > 0 {
+					defaultGroup := "admin"
+					aclname := backendName
+					acl := ComputedAcl{
+						Name:   aclname,
+						Groups: []string{defaultGroup},
+						Users:  []AclUser{},
+					}
+					for _, user := range backend.BasicAuth {
+						parts := strings.Split(user, ":")
+						log.Debugf("Backend %s basic-auth user=%s password=%s full=%s", backendName, parts[0], parts[1], user)
+						acl.Users = append(acl.Users, AclUser{
+							Name:     parts[0],
+							Password: parts[1],
+							Group:    defaultGroup,
+						})
+					}
+					finalConfig.Acls = append(finalConfig.Acls, acl)
+					backendLines.WriteNewLine(fmt.Sprintf("acl %s-auth http_auth(%s)", backendName, aclname))
+					backendLines.WriteNewLine(fmt.Sprintf("http-request auth realm %s unless %s-auth", backendName, backendName))
+				}
 				buffer.WriteNewLine(fmt.Sprintf("use_backend %s if { %s }", backendName, backendIf.String()))
 			}
 			backends = append(backends, ComputedBackend{
@@ -299,6 +338,15 @@ backend {{ $backend.Name }}
 
 {{- end -}}
 
+{{- end }}
+{{ range $acl := .Acls }}
+userlist {{ $acl.Name}}
+	{{ range $group := $acl.Groups -}}
+		group {{ $group }} 
+	{{ end -}} 
+	{{ range $user := $acl.Users -}}
+	user {{ $user.Name }} password {{ $user.Password }}
+	{{ end -}}
 {{- end }}
 
 `

@@ -130,6 +130,9 @@ type ServeOptions struct {
 	Staging            bool
 	BundleCertificates bool
 	LetsencryptMail    string
+	StatsPort          int
+	StatsUser          string
+	StatsPassword      string
 }
 
 func NewServeCmd() *cobra.Command {
@@ -214,6 +217,13 @@ func NewServeCmd() *cobra.Command {
 			if err != nil {
 				return errors.Wrapf(err, "Failed to dump acme.json")
 			}
+			options := lb.Options{
+				Stats: lb.Stats{
+					Port:     o.StatsPort,
+					Password: o.StatsPassword,
+					User:     o.StatsUser,
+				},
+			}
 			dumpAll := func(haproxyLb *lb.HaproxyLb) error {
 				dumpResponse, err := haproxyLb.Dump()
 
@@ -251,7 +261,7 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to read config file"))
 					return
 				}
-				haproxyLb, err := lb.NewHaproxyLb(leBytes)
+				haproxyLb, err := lb.NewHaproxyLb(leBytes, options)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to init haproxy lb config"))
 					return
@@ -270,7 +280,7 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to read config file"))
 					return
 				}
-				hlb, err := lb.NewHaproxyLb(leBytes)
+				hlb, err := lb.NewHaproxyLb(leBytes, options)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to init haproxy lb config"))
 					return
@@ -287,7 +297,7 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to read config file"))
 					return
 				}
-				hlb, err := lb.NewHaproxyLb(leBytes)
+				hlb, err := lb.NewHaproxyLb(leBytes, options)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to init haproxy lb config"))
 					return
@@ -310,7 +320,7 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to read config file"))
 					return
 				}
-				haproxyLb, err := lb.NewHaproxyLb(leBytes)
+				haproxyLb, err := lb.NewHaproxyLb(leBytes, options)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to init haproxy lb config"))
 					return
@@ -340,7 +350,7 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to read config file"))
 					return
 				}
-				haproxyLb, err := lb.NewHaproxyLb(leBytes)
+				haproxyLb, err := lb.NewHaproxyLb(leBytes, options)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to init haproxy lb config"))
 					return
@@ -390,7 +400,7 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to read config file"))
 					return
 				}
-				haproxyLb, err := lb.NewHaproxyLb(leBytes)
+				haproxyLb, err := lb.NewHaproxyLb(leBytes, options)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to init haproxy lb config"))
 					return
@@ -420,7 +430,7 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to read config file"))
 					return
 				}
-				hlb, err := lb.NewHaproxyLb(leBytes)
+				hlb, err := lb.NewHaproxyLb(leBytes, options)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to init haproxy lb config"))
 					return
@@ -516,6 +526,10 @@ func NewServeCmd() *cobra.Command {
 	flags.StringVar(&o.LetsencryptMail, "le-mail", "", "Mail for let's encrypt")
 	flags.BoolVar(&o.Staging, "le-staging", false, "Usae let's encrypt staging ca")
 	flags.BoolVar(&o.BundleCertificates, "le-bundle", true, "Bundle issuer certificate and issued certificate")
+	flags.StringVar(&o.StatsUser, "stats-user", "admin", "User for haproxy stats")
+	flags.StringVar(&o.StatsPassword, "stats-password", "password", "Password for haproxy stats")
+	flags.IntVar(&o.StatsPort, "stats-port", 9000, "Port for haproxy stats")
+
 	serveCmd.MarkFlagRequired("haproxy-dir")
 	serveCmd.MarkFlagRequired("storage-dir")
 	serveCmd.MarkFlagRequired("le-mail")

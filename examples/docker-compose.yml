@@ -9,6 +9,7 @@ services:
     ports:
       - 443:443
       - 80:80
+      - 9005:9000
     networks:
     - haproxy
   letsencrypt:

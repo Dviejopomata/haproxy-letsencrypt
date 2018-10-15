@@ -23,6 +23,7 @@ type LoadBalancer interface {
 type HaproxyLb struct {
 	LeContents []byte
 	config     *HaproxyConfig
+	Options    Options
 }
 
 func (h *HaproxyLb) AddFrontend(options types.FrontendAddOptions) error {
@@ -132,10 +133,16 @@ func (h *HaproxyLb) DeleteBackend(options types.BackendDeleteOptions) error {
 	}
 	return errors.Errorf("Backend not found: %v", options)
 }
-func NewHaproxyLb(leContents []byte) (*HaproxyLb, error) {
+
+type Options struct {
+	Stats Stats
+}
+
+func NewHaproxyLb(leContents []byte, o Options) (*HaproxyLb, error) {
 	haproxyLb := &HaproxyLb{
 		LeContents: leContents,
 		config:     &HaproxyConfig{},
+		Options:    o,
 	}
 	err := haproxyLb.parseConfig()
 	if err != nil {
@@ -192,9 +199,15 @@ type ComputedAcl struct {
 	Groups []string
 	Users  []AclUser
 }
+type Stats struct {
+	User     string
+	Password string
+	Port     int
+}
 type ComputedHaproxyConfig struct {
 	Frontends []ComputedFrontend
 	Acls      []ComputedAcl
+	Stats     Stats
 }
 type BufferNewLine struct {
 	bytes.Buffer
@@ -204,10 +217,11 @@ func (b *BufferNewLine) WriteNewLine(str string) (n int, err error) {
 	return b.WriteString(fmt.Sprintf("%s\n", str))
 }
 
-func computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
+func (h HaproxyLb) computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
 	finalConfig := ComputedHaproxyConfig{
 		Frontends: []ComputedFrontend{},
 		Acls:      []ComputedAcl{},
+		Stats:     h.Options.Stats,
 	}
 	for _, frontend := range config.Frontends {
 		var buffer BufferNewLine
@@ -320,6 +334,16 @@ defaults
   timeout client 2000000
   timeout server 2000000
 
+
+listen stats # Define a listen section called "stats"
+  bind :{{ .Stats.Port }} # Listen on localhost:9000
+  mode http
+  stats enable  # Enable stats page
+  stats hide-version  # Hide HAProxy version
+  stats realm Haproxy\ Statistics  # Title text for popup window
+  stats uri /haproxy_stats  # Stats URI
+  stats auth {{ .Stats.User }}:{{ .Stats.Password }}  # Authentication credentials
+
 # this load balancer servers both www.site.com and static.site.com, but those two URLS have
 # different servers on the backend (app servers versus statis media apache instances)
 # also, I want to server www.site.com/static/* from the later farm
@@ -367,7 +391,7 @@ func (h *HaproxyLb) Dump() (dumpResponse DumpResponse, err error) {
 		return
 	}
 	var b bytes.Buffer
-	err = tmpl.Execute(&b, computeConfig(*h.config))
+	err = tmpl.Execute(&b, h.computeConfig(*h.config))
 	if err != nil {
 		return
 	}

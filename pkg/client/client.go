@@ -151,7 +151,7 @@ func (c *Client) RenewCertificate(certificate string) error {
 		return err
 	}
 	_ = resp
-	if resp.StatusCode == http.StatusNoContent {
+	if resp.StatusCode == http.StatusOK {
 		return nil
 	}
 	return errors.Errorf("Failed with status code %d", resp.StatusCode)

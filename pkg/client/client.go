@@ -144,3 +144,15 @@ func (c *Client) AddCertificate(certificates []string) error {
 	}
 	return errors.Errorf("Failed with status code %d", resp.StatusCode)
 }
+
+func (c *Client) RenewCertificate(certificate string) error {
+	resp, err := c.httpClient.Post(fmt.Sprintf("%s/certificates/%s/renew", c.BaseURL, certificate), "", nil)
+	if err != nil {
+		return err
+	}
+	_ = resp
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	return errors.Errorf("Failed with status code %d", resp.StatusCode)
+}

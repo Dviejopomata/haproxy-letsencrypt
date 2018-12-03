@@ -424,6 +424,17 @@ func NewServeCmd() *cobra.Command {
 				c.Status(http.StatusNoContent)
 				c.Done()
 			})
+			_ = r.POST("/certificates/:domain/renew", func(c *gin.Context) {
+				domain := c.Param("domain")
+				err := certificatesApi.RenewCertificate(o.LetsencryptMail, o.BundleCertificates, domain)
+				if err != nil {
+					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to renew certificates for %s", domain))
+					return
+				}
+				c.JSON(http.StatusOK, gin.H{
+					"message": fmt.Sprintf("%s renewed successfully", domain),
+				})
+			})
 			_ = r.POST("/backend", func(c *gin.Context) {
 				leBytes, err := ioutil.ReadFile(configPath)
 				if err != nil {
@@ -595,6 +606,61 @@ func remove(s []string, i int) []string {
 	s[i] = s[len(s)-1]
 	return s[:len(s)-1]
 }
+func (c *CertificatesApi) RenewCertificate(email string, bundle bool, domains ...string) error {
+	if len(domains) == 0 {
+		return nil
+	}
+	acmeClient, err := c.getAcmeClient(email)
+	if err != nil {
+		return err
+	}
+	for idx := range c.Config.Accounts {
+		user := c.Config.Accounts[idx]
+		if user.Email != email {
+			continue
+		}
+		for idxCrt := range user.Certificates {
+			crt := c.Config.Accounts[idx].Certificates[idxCrt]
+			for _, domain := range domains {
+				if domain == crt.Domain {
+					//  renew
+					cert := acme.CertificateResource{
+						Domain:            domain,
+						Certificate:       crt.Crt,
+						PrivateKey:        crt.Key,
+						IssuerCertificate: crt.IssuerCertificate,
+						CSR:               crt.Csr,
+						CertURL:           crt.CertUrl,
+						CertStableURL:     crt.CertStableUrl,
+						AccountRef:        crt.AccountRef,
+					}
+
+					resource, err := acmeClient.Acme.RenewCertificate(cert, bundle, false)
+					if err != nil {
+						return err
+					}
+					crt.Domain = resource.Domain
+					crt.Crt = resource.Certificate
+					crt.Key = resource.PrivateKey
+					crt.IssuerCertificate = resource.IssuerCertificate
+					crt.Csr = resource.CSR
+					crt.CertUrl = resource.CertURL
+					crt.CertStableUrl = resource.CertStableURL
+					crt.AccountRef = resource.AccountRef
+				}
+			}
+		}
+	}
+	err = c.dumpCertificates()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to dump certificates")
+	}
+	err = c.dumpAcmeJson()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to dump config")
+	}
+	return reloadContainer(haproxyContainerName)
+}
 func (c *CertificatesApi) ProvisionCertificates(email string, bundle bool, domains ...string) error {
 
 	// remove certificates we have
@@ -743,6 +809,7 @@ func (c *CertificatesApi) dumpAcmeJson() error {
 	return ioutil.WriteFile(c.getAcmePath(), contents, os.ModePerm)
 
 }
+
 func (c *CertificatesApi) GetCertficate(domain string) (*AcmeCertificate, error) {
 	for _, acc := range c.Config.Accounts {
 		for _, crt := range acc.Certificates {

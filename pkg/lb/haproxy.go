@@ -329,10 +329,10 @@ defaults
   mode http
   log global
   option dontlognull # bind *:443 ssl crt .
-  timeout http-request 5s
-  timeout connect 5000
-  timeout client 2000000
-  timeout server 2000000
+  timeout http-request 60s
+  timeout connect 4s
+  timeout client 20s
+  timeout server 100s
 
 
 listen stats # Define a listen section called "stats"

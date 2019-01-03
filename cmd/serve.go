@@ -22,6 +22,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"github.com/Dviejopomata/haproxy-letsencrypt/log"
 	"github.com/Dviejopomata/haproxy-letsencrypt/pkg/lb"
@@ -32,6 +33,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
+	"github.com/robfig/cron"
 	"github.com/spf13/cobra"
 	"github.com/xenolf/lego/acme"
 	"io/ioutil"
@@ -435,6 +437,23 @@ func NewServeCmd() *cobra.Command {
 					"message": fmt.Sprintf("%s renewed successfully", domain),
 				})
 			})
+			_ = r.GET("/certificates", func(c *gin.Context) {
+				crts, err := certificatesApi.GetCertficates(o.LetsencryptMail)
+				if err != nil {
+					c.AbortWithError(http.StatusBadRequest, err)
+					return
+				}
+				c.JSON(http.StatusOK, crts)
+			})
+			_ = r.GET("/certificates/renew", func(c *gin.Context) {
+				err := certificatesApi.RenewCertificates(o.BundleCertificates)
+				if err != nil {
+					c.AbortWithError(http.StatusBadRequest, err)
+					return
+				}
+				c.Status(http.StatusNoContent)
+				c.Done()
+			})
 			_ = r.POST("/backend", func(c *gin.Context) {
 				leBytes, err := ioutil.ReadFile(configPath)
 				if err != nil {
@@ -524,6 +543,24 @@ func NewServeCmd() *cobra.Command {
 				c.Status(http.StatusNoContent)
 
 			})
+			c := cron.New()
+			//c.
+			c.AddFunc("@daily", func() {
+				err := certificatesApi.RenewCertificates(o.BundleCertificates)
+				if err != nil {
+					log.WithError(err).Println("Failed to renew certificates")
+				} else {
+					log.Println("Renewed certificates succesfully")
+				}
+			})
+			go c.Start()
+
+			err = certificatesApi.RenewCertificates(o.BundleCertificates)
+			if err != nil {
+				log.WithError(err).Println("Failed to renew certificates")
+			} else {
+				log.Println("Renewed certificates succesfully")
+			}
 			err = r.Run(":6000")
 			if err != nil {
 				return err
@@ -660,6 +697,28 @@ func (c *CertificatesApi) RenewCertificate(email string, bundle bool, domains ..
 		return errors.Wrapf(err, "Failed to dump config")
 	}
 	return reloadContainer(haproxyContainerName)
+}
+func (c *CertificatesApi) RenewCertificates(bundle bool) error {
+	for _, acc := range c.Config.Accounts {
+		for _, acmeCertificate := range acc.Certificates {
+			block, _ := pem.Decode(acmeCertificate.Crt)
+			if block == nil {
+				panic("failed to parse certificate PEM")
+			}
+			cert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				panic("failed to parse certificate: " + err.Error())
+			}
+			if cert.NotAfter.Before(time.Now().AddDate(0, 0, 10)) {
+				log.Printf("Renewing certificate %s for email %s", acmeCertificate.Domain, acc.Email)
+				err := c.RenewCertificate(acc.Email, bundle, acmeCertificate.Domain)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 func (c *CertificatesApi) ProvisionCertificates(email string, bundle bool, domains ...string) error {
 
@@ -810,6 +869,14 @@ func (c *CertificatesApi) dumpAcmeJson() error {
 
 }
 
+func (c *CertificatesApi) GetCertficates(email string) ([]*AcmeCertificate, error) {
+	for _, acc := range c.Config.Accounts {
+		if acc.Email == email {
+			return acc.Certificates, nil
+		}
+	}
+	return nil, errors.Errorf("The account with the email %s was not found", email)
+}
 func (c *CertificatesApi) GetCertficate(domain string) (*AcmeCertificate, error) {
 	for _, acc := range c.Config.Accounts {
 		for _, crt := range acc.Certificates {

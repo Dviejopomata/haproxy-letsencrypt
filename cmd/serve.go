@@ -445,7 +445,7 @@ func NewServeCmd() *cobra.Command {
 				}
 				c.JSON(http.StatusOK, crts)
 			})
-			_ = r.GET("/certificates/renew", func(c *gin.Context) {
+			_ = r.GET("/certificatesrenew", func(c *gin.Context) {
 				err := certificatesApi.RenewCertificates(o.BundleCertificates)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, err)

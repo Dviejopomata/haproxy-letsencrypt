@@ -258,7 +258,7 @@ func (h HaproxyLb) computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
 			} else {
 				if backend.Host != "" {
 					if isWildcardHost(backend.Host) {
-						backendIf.WriteString(fmt.Sprintf("hdr_sub(host) -i %s  ", strings.TrimPrefix(backend.Host, "*.")))
+						backendIf.WriteString(fmt.Sprintf("hdr_end(host) -i %s  ", strings.TrimPrefix(backend.Host, "*")))
 					} else {
 						backendIf.WriteString(fmt.Sprintf("hdr(host) -i %s  ", backend.Host))
 					}

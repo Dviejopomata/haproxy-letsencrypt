@@ -122,6 +122,7 @@ func newBackendAddCmd() *cobra.Command {
 	flags.StringVar(&o.Host, "host", "", "")
 	flags.StringVar(&o.Path, "path", "", "")
 	flags.StringVar(&o.Mode, "mode", "http", "")
+	flags.BoolVar(&o.ProvisionCertificate, "provision-certificate", true, "")
 	flags.StringVar(&o.If, "if", "", "")
 	flags.StringArrayVar(&o.BasicAuth, "basic-auth", []string{}, "Basic auth users (user:password), generate password: printf \"123456\" | mkpasswd --stdin --method=md5 ")
 	flags.StringVar(&backendUrl, "backend-url", "b", "Server url")

@@ -497,7 +497,7 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to dump configuration"))
 					return
 				}
-				if options.Host != "" && !certificatesApi.IsCustomCertificate(options.Host) {
+				if options.ProvisionCertificate && options.Host != "" && !certificatesApi.IsCustomCertificate(options.Host) {
 					requireSsl := false
 					for _, frontendName := range options.Frontend {
 						frontend, err := hlb.GetFrontend(frontendName)

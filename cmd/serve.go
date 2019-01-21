@@ -77,6 +77,22 @@ var (
 	dockerCli            *client.Client
 )
 
+func readFile(c *gin.Context, name string) ([]byte, error) {
+	formFile, err := c.FormFile(name)
+	if err != nil {
+		return nil, err
+	}
+	file, err := formFile.Open()
+	if err != nil {
+		return nil, err
+	}
+	contents, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	return contents, nil
+}
+
 func getHaproxyContainer(dockerCli *client.Client, projectName string) (json types.ContainerJSON, err error) {
 	filterArgs := filters.NewArgs()
 	ctx := context.Background()
@@ -481,7 +497,7 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to dump configuration"))
 					return
 				}
-				if options.Host != "" {
+				if options.Host != "" && !certificatesApi.IsCustomCertificate(options.Host) {
 					requireSsl := false
 					for _, frontendName := range options.Frontend {
 						frontend, err := hlb.GetFrontend(frontendName)
@@ -526,6 +542,46 @@ func NewServeCmd() *cobra.Command {
 				c.Header("Content-type", "text/plain")
 				c.String(200, string(keyAuthBytes))
 
+			})
+			_ = r.POST("/certificates/:domain/custom", func(c *gin.Context) {
+				file, err := readFile(c, "pem")
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"error": "Missing \"pem\" file",
+					})
+					return
+				}
+				domain := c.Param("domain")
+				if domain == "" {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"error": "Parameter \"domain\" is missing",
+					})
+					return
+				}
+				err = certificatesApi.AddCustomCertificate(file, domain)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"error": err.Error(),
+					})
+					return
+				}
+				c.Status(http.StatusNoContent)
+			})
+
+			_ = r.DELETE("/certificates/:domain/custom", func(c *gin.Context) {
+				domain := c.Param("domain")
+				if domain == "" {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"error": "Parameter \"domain\" is missing",
+					})
+					return
+				}
+				err = certificatesApi.DeleteCustomCertificate(domain)
+				if err != nil {
+					c.AbortWithError(http.StatusBadRequest, err)
+					return
+				}
+				c.Status(http.StatusNoContent)
 			})
 			_ = r.POST("/certificates", func(c *gin.Context) {
 				var domains []string
@@ -631,7 +687,13 @@ type AcmeCertificate struct {
 	AccountRef        string
 }
 type AcmeConfig struct {
-	Accounts []*AcmeUser
+	Accounts    []*AcmeUser
+	CustomCerts []CustomCert
+}
+
+type CustomCert struct {
+	Domain string
+	Pem    []byte
 }
 
 type AcmeClient struct {
@@ -643,6 +705,7 @@ func remove(s []string, i int) []string {
 	s[i] = s[len(s)-1]
 	return s[:len(s)-1]
 }
+
 func (c *CertificatesApi) RenewCertificate(email string, bundle bool, domains ...string) error {
 	if len(domains) == 0 {
 		return nil
@@ -720,6 +783,16 @@ func (c *CertificatesApi) RenewCertificates(bundle bool) error {
 	}
 	return nil
 }
+
+func (c *CertificatesApi) IsCustomCertificate(domain string) bool {
+	for _, customCrt := range c.Config.CustomCerts {
+		if customCrt.Domain == domain {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *CertificatesApi) ProvisionCertificates(email string, bundle bool, domains ...string) error {
 
 	// remove certificates we have
@@ -806,6 +879,16 @@ func (c *CertificatesApi) dumpCertificates() error {
 			return err
 		}
 	}
+	for _, customCrt := range c.Config.CustomCerts {
+		domain := customCrt.Domain
+		externalCertFile := filepath.Join(certsDir, fmt.Sprintf("%s.pem", domain))
+		buffer.WriteString(fmt.Sprintf("%s %s\n", externalCertFile, domain))
+		certFile := filepath.Join(certsDir, fmt.Sprintf("%s.pem", domain))
+		err := ioutil.WriteFile(certFile, customCrt.Pem, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
 	err = ioutil.WriteFile(crtListFile, buffer.Bytes(), os.ModePerm)
 	if err != nil {
 		return err
@@ -852,6 +935,7 @@ func (c *CertificatesApi) getAcmeClient(email string) (*AcmeClient, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to initialize acme client")
 	}
+
 	acmeClient.SetChallengeProvider(acme.HTTP01, le.NewHTTPProviderServer())
 	reg, err := acmeClient.Register(true)
 	if err != nil {
@@ -886,6 +970,46 @@ func (c *CertificatesApi) GetCertficate(domain string) (*AcmeCertificate, error)
 		}
 	}
 	return nil, errors.Errorf("Certificate for domain %s not found", domain)
+}
+
+func (c *CertificatesApi) DeleteCustomCertificate(domain string) error {
+	for i, customCrt := range c.Config.CustomCerts {
+		if customCrt.Domain == domain {
+			c.Config.CustomCerts[i] = c.Config.CustomCerts[len(c.Config.CustomCerts)-1]
+			c.Config.CustomCerts = c.Config.CustomCerts[:len(c.Config.CustomCerts)-1]
+			err := c.dumpCertificates()
+			if err != nil {
+				return errors.Wrapf(err, "Failed to dump certificates")
+			}
+			err = c.dumpAcmeJson()
+			if err != nil {
+				return errors.Wrapf(err, "Failed to dump config")
+			}
+			return reloadContainer(haproxyContainerName)
+		}
+	}
+	return errors.Errorf("Custom certificate %s not found", domain)
+}
+func (c *CertificatesApi) AddCustomCertificate(file []byte, domain string) error {
+	customCert := CustomCert{
+		Domain: domain,
+		Pem:    file,
+	}
+	for _, customCrt := range c.Config.CustomCerts {
+		if customCrt.Domain == domain {
+			return errors.Errorf("Custom certificate %s already exists", domain)
+		}
+	}
+	c.Config.CustomCerts = append(c.Config.CustomCerts, customCert)
+	err := c.dumpCertificates()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to dump certificates")
+	}
+	err = c.dumpAcmeJson()
+	if err != nil {
+		return errors.Wrapf(err, "Failed to dump config")
+	}
+	return reloadContainer(haproxyContainerName)
 }
 
 type MyUser struct {

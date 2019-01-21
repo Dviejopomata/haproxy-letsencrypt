@@ -1,0 +1,1 @@
+/usr/local/etc/haproxy/certs/*.tributos.nextagilesoft.com.pem *.tributos.nextagilesoft.com

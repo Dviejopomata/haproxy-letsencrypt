@@ -173,6 +173,11 @@ func getDefaultConfig() *HaproxyConfig {
 type HaproxyConfig struct {
 	Frontends          []hatypes.Frontend
 	Letsencryptaddress string
+	CustomCerts        []CustomCert
+}
+type CustomCert struct {
+	Domains []string
+	Pem     string
 }
 type ComputedBackend struct {
 	Name    string
@@ -239,7 +244,7 @@ func (h HaproxyLb) computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
 		}
 		var backends []ComputedBackend
 		for backendIdx, backend := range frontend.Backends {
-			backendName := fmt.Sprintf("be_%s_%d_%s", frontend.Name, backendIdx, backend.Host)
+			backendName := fmt.Sprintf("be_%s_%d_%s", frontend.Name, backendIdx, cleanBackendName(backend.Host))
 			if backend.Default {
 				buffer.WriteNewLine(fmt.Sprintf("default_backend %s", backendName))
 			}
@@ -252,7 +257,11 @@ func (h HaproxyLb) computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
 				backendIf.WriteString(backend.If)
 			} else {
 				if backend.Host != "" {
-					backendIf.WriteString(fmt.Sprintf("hdr(host) -i %s  ", backend.Host))
+					if isWildcardHost(backend.Host) {
+						backendIf.WriteString(fmt.Sprintf("hdr_sub(host) -i %s  ", strings.TrimPrefix(backend.Host, "*.")))
+					} else {
+						backendIf.WriteString(fmt.Sprintf("hdr(host) -i %s  ", backend.Host))
+					}
 				}
 				if backend.Path != "" {
 					backendIf.WriteString(fmt.Sprintf("  path_beg %s", backend.Path))
@@ -309,6 +318,14 @@ func (h HaproxyLb) computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
 
 }
 
+func cleanBackendName(s string) string {
+	return strings.Replace(s, "*","_", -1)
+}
+
+func isWildcardHost(domain string) bool {
+	return strings.HasPrefix(domain, "*")
+}
+
 const haproxyTemplate string = `
 global
   # log /dev/log    local0
@@ -328,7 +345,7 @@ defaults
   maxconn 1000
   mode http
   log global
-  option dontlognull # bind *:443 ssl crt .
+  option dontlognull 
   timeout http-request 60s
   timeout connect 4s
   timeout client 20s
@@ -336,7 +353,7 @@ defaults
 
 
 listen stats # Define a listen section called "stats"
-  bind :{{ .Stats.Port }} # Listen on localhost:9000
+  bind :{{ .Stats.Port }} 
   mode http
   stats enable  # Enable stats page
   stats hide-version  # Hide HAProxy version

@@ -1,0 +1,36 @@
+frontends:
+- name: http
+  port: 80
+  mode: http
+  lines: []
+  backends:
+  - if: ""
+    mode: http
+    host: example.com
+    path: ""
+    servers:
+    - address: 192.168.1.47:8080
+      options: ""
+    default: false
+    basicauth:
+    - foo:$1$IBZn5tWj$dJIVwHaK465qDTISvMFmK1
+  options: ""
+  ssl: false
+- name: https
+  port: 443
+  mode: http
+  lines: []
+  backends:
+  - if: ""
+    mode: http
+    host: '*.tributos.nextagilesoft.com'
+    path: ""
+    servers:
+    - address: 192.168.1.47:5080
+      options: ""
+    default: false
+    basicauth: []
+  options: ""
+  ssl: true
+letsencryptaddress: ""
+customcerts: []

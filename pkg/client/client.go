@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/Dviejopomata/haproxy-letsencrypt/log"
 	"github.com/Dviejopomata/haproxy-letsencrypt/pkg/types"
 	"github.com/pkg/errors"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 )
 
@@ -139,6 +142,59 @@ func (c *Client) AddCertificate(certificates []string) error {
 		return err
 	}
 	_ = resp
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	return errors.Errorf("Failed with status code %d", resp.StatusCode)
+}
+
+func (c *Client) AddCustomCertificate(certificate string, pem []byte) error {
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("pem", "file.pem")
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(part, bytes.NewBuffer(pem))
+	if err != nil {
+		return err
+	}
+	err = writer.Close()
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Post(
+		fmt.Sprintf("%s/certificates/%s/custom", c.BaseURL, certificate),
+		writer.FormDataContentType(),
+		body,
+	)
+	if err != nil {
+
+		return err
+	}
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	all, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	log.Printf("Response: %s", string(all))
+	return errors.Errorf("Failed with status code %d", resp.StatusCode)
+}
+
+func (c *Client) DeleteCustomCertificate(certificate string) error {
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/certificates/%s/custom", c.BaseURL, certificate), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
 	if resp.StatusCode == http.StatusNoContent {
 		return nil
 	}

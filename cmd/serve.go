@@ -936,7 +936,11 @@ func (c *CertificatesApi) getAcmeClient(email string) (*AcmeClient, error) {
 		return nil, errors.Wrapf(err, "Failed to initialize acme client")
 	}
 
-	acmeClient.SetChallengeProvider(acme.HTTP01, le.NewHTTPProviderServer())
+	err = acmeClient.SetChallengeProvider(acme.HTTP01, le.NewHTTPProviderServer())
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to set challenge http-01")
+	}
+	acmeClient.ExcludeChallenges([]acme.Challenge{acme.TLSALPN01, acme.DNS01})
 	reg, err := acmeClient.Register(true)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to register acmeclient")

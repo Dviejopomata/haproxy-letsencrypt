@@ -423,13 +423,13 @@ func NewServeCmd() *cobra.Command {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to init haproxy lb config"))
 					return
 				}
-				backendAddOptions := naTypes.FrontendAddOptions{}
-				err = c.BindJSON(&backendAddOptions)
+				frontendAddOptions := naTypes.FrontendAddOptions{}
+				err = c.BindJSON(&frontendAddOptions)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to read body"))
 					return
 				}
-				err = haproxyLb.AddFrontend(backendAddOptions)
+				err = haproxyLb.AddFrontend(frontendAddOptions)
 				if err != nil {
 					c.AbortWithError(http.StatusBadRequest, errors.Wrapf(err, "Failed to add frontend"))
 					return

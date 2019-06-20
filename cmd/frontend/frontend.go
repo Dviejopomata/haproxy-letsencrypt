@@ -5,6 +5,7 @@ import (
 	"github.com/Dviejopomata/haproxy-letsencrypt/pkg/client"
 	"github.com/Dviejopomata/haproxy-letsencrypt/pkg/types"
 	"github.com/alexeyco/simpletable"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"strconv"
 	"strings"
@@ -98,6 +99,9 @@ func newFrontendAddCmd() *cobra.Command {
 		Short: "Add a new frontend",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.NewHttpClient(backendUrl)
+			if o.Port == 0 && o.Bind == "" {
+				return errors.New("--port or --bind need to be set")
+			}
 			err := c.AddFrontend(o)
 			if err != nil {
 				return err
@@ -110,13 +114,13 @@ func newFrontendAddCmd() *cobra.Command {
 	frontendAddCmd.MarkFlagRequired("backend-url")
 
 	flags.BoolVar(&o.Ssl, "ssl", false, "Ssl activated")
-	flags.Int64VarP(&o.Port, "port", "p", 80, "")
+	flags.Int64VarP(&o.Port, "port", "p", 0, "")
+	flags.StringVarP(&o.Bind, "bind", "b", "", "")
 	flags.StringVarP(&o.Name, "name", "n", "", "")
 	flags.StringVarP(&o.Options, "options", "o", "", "")
 	flags.StringVarP(&o.Mode, "mode", "m", "http", "")
 	flags.StringArrayVarP(&o.Lines, "line", "l", []string{}, "")
 
-	frontendAddCmd.MarkFlagRequired("port")
 	frontendAddCmd.MarkFlagRequired("name")
 
 	return frontendAddCmd

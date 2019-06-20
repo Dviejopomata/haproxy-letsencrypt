@@ -31,6 +31,7 @@ func (h *HaproxyLb) AddFrontend(options types.FrontendAddOptions) error {
 		if frontend.Name == options.Name {
 			h.config.Frontends[i] = hatypes.Frontend{
 				Name:     options.Name,
+				Bind:     options.Bind,
 				Port:     options.Port,
 				Ssl:      options.Ssl,
 				Options:  options.Options,
@@ -43,6 +44,7 @@ func (h *HaproxyLb) AddFrontend(options types.FrontendAddOptions) error {
 	}
 	h.config.Frontends = append(h.config.Frontends, hatypes.Frontend{
 		Name:     options.Name,
+		Bind:     options.Bind,
 		Port:     options.Port,
 		Ssl:      options.Ssl,
 		Options:  options.Options,
@@ -73,10 +75,11 @@ func (h *HaproxyLb) AddBackend(options types.BackendAddOptions) error {
 					}
 				}
 				for i, be := range frontend.Backends {
-					if be.Host == options.Host && be.Mode == options.Mode && be.Path == options.Path {
+					if (be.Host == options.Host && be.Sni == options.Sni) && be.Mode == options.Mode && be.Path == options.Path {
 						frontend.Backends[i] = hatypes.Backend{
 							If:        options.If,
 							Host:      options.Host,
+							Sni:       options.Sni,
 							Mode:      options.Mode,
 							Servers:   servers,
 							Default:   options.Default,
@@ -91,6 +94,7 @@ func (h *HaproxyLb) AddBackend(options types.BackendAddOptions) error {
 					If:        options.If,
 					Host:      options.Host,
 					Mode:      options.Mode,
+					Sni:       options.Sni,
 					Servers:   servers,
 					Default:   options.Default,
 					Path:      options.Path,
@@ -121,7 +125,7 @@ func (h *HaproxyLb) DeleteBackend(options types.BackendDeleteOptions) error {
 		if fe.Name == options.Frontend {
 			for j, backend := range fe.Backends {
 				if options.Path == backend.Path &&
-					options.Host == backend.Host &&
+					(options.Host == backend.Host || options.Sni == backend.Sni) &&
 					options.Mode == backend.Mode {
 					h.config.Frontends[i].Backends = append(h.config.Frontends[i].Backends[:j], h.config.Frontends[i].Backends[j+1:]...)
 					return nil
@@ -233,10 +237,17 @@ func (h HaproxyLb) computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
 		if len(frontend.Backends) == 0 {
 			continue
 		}
-		if frontend.Ssl {
-			buffer.WriteNewLine(fmt.Sprintf("bind *:%d ssl crt-list /usr/local/etc/haproxy/crt-list.txt %s", frontend.Port, frontend.Options))
+		var bindPort string
+		log.Info("Bind %s", frontend.Bind)
+		if frontend.Bind != "" {
+			bindPort = frontend.Bind
 		} else {
-			buffer.WriteNewLine(fmt.Sprintf("bind *:%d %s", frontend.Port, frontend.Options))
+			bindPort = fmt.Sprintf("*:%d", frontend.Port)
+		}
+		if frontend.Ssl {
+			buffer.WriteNewLine(fmt.Sprintf("bind %s ssl crt-list /usr/local/etc/haproxy/crt-list.txt %s", bindPort, frontend.Options))
+		} else {
+			buffer.WriteNewLine(fmt.Sprintf("bind %s %s", bindPort, frontend.Options))
 		}
 		buffer.WriteNewLine(fmt.Sprintf("mode %s", frontend.Mode))
 		for _, line := range frontend.Lines {
@@ -261,6 +272,12 @@ func (h HaproxyLb) computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
 						backendIf.WriteString(fmt.Sprintf("hdr_end(host) -i %s  ", strings.TrimPrefix(backend.Host, "*")))
 					} else {
 						backendIf.WriteString(fmt.Sprintf("hdr(host) -i %s  ", backend.Host))
+					}
+				} else if backend.Sni != "" {
+					if isWildcardHost(backend.Sni) {
+						backendIf.WriteString(fmt.Sprintf("req.ssl_sni -m end %s  ", strings.TrimPrefix(backend.Sni, "*")))
+					} else {
+						backendIf.WriteString(fmt.Sprintf("req.ssl_sni -i %s  ", backend.Sni))
 					}
 				}
 				if backend.Path != "" {
@@ -319,7 +336,7 @@ func (h HaproxyLb) computeConfig(config HaproxyConfig) ComputedHaproxyConfig {
 }
 
 func cleanBackendName(s string) string {
-	return strings.Replace(s, "*","_", -1)
+	return strings.Replace(s, "*", "_", -1)
 }
 
 func isWildcardHost(domain string) bool {

@@ -772,7 +772,7 @@ func (c *CertificatesApi) RenewCertificates(bundle bool) error {
 			if err != nil {
 				panic("failed to parse certificate: " + err.Error())
 			}
-			if cert.NotAfter.Before(time.Now().AddDate(0, 0, 10)) {
+			if cert.NotAfter.Before(time.Now().AddDate(0, 0, 20)) {
 				log.Printf("Renewing certificate %s for email %s", acmeCertificate.Domain, acc.Email)
 				err := c.RenewCertificate(acc.Email, bundle, acmeCertificate.Domain)
 				if err != nil {
